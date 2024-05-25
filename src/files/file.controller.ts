@@ -201,4 +201,21 @@ export class FileController {
       };
     }
   }
+
+  @Get(':id')
+  async findOne(@Param('id') id: string, @Request() req) {
+    try {
+      const file = await this.fileService.findOne(+id, req.user.id);
+      return {
+        error: false,
+        data: file,
+      };
+    } catch (err) {
+      return {
+        error: true,
+        message:
+          err.message.replace(/^Error:\s*/, '') || 'Error while fetching file.',
+      };
+    }
+  }
 }

@@ -4,7 +4,7 @@
  * These folders are stored in the database and are associated with a user by the email, which is not changeable.
  * The folder is sanitized before being saved in the database. Example: if the folder name is "My Folder", it will be saved as "my_folder".
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Folder, FolderType } from './entities/folder.entity';
@@ -22,6 +22,8 @@ import { SharedUserFolderDto } from './dtos/shared-user-folder.dto';
 
 @Injectable()
 export class FolderService {
+  private readonly logger = new Logger(FolderService.name);
+
   constructor(
     @InjectRepository(Folder)
     private folderRepository: Repository<Folder>,
@@ -43,8 +45,11 @@ export class FolderService {
       const folderPath = this.sanitizePath(createFolderDto.name);
       const isPublic = createFolderDto.isPublic;
 
-      const folderExists = await this.findFolderByPath(folderPath);
+      const folderExists = await this.findFolderByPath(folderPath, isPublic);
       if (folderExists) {
+        this.logger.error(
+          `User ${userId} tried to create a folder ${name} that already exists.`,
+        );
         throw new Error('Folder already exists');
       }
 
@@ -58,11 +63,12 @@ export class FolderService {
       };
 
       const folder = this.folderRepository.create(data);
-
       await this.folderRepository.save(folder);
+      this.logger.log(`New folder id ${folder.id} created by user ${userId}`);
 
       return new ResponseFolderDto(folder);
     } catch (error) {
+      this.logger.error(`ERROR creating folder: ${error}`);
       throw new Error(error);
     }
   }
@@ -86,17 +92,26 @@ export class FolderService {
     });
 
     if (!folder) {
+      this.logger.error(
+        `Folder ${folderId} not found searched by user ${loggedUserId}`,
+      );
       throw new Error('Folder not found');
     }
 
     const { creator, ...folderResponse } = folder;
 
     if (folder.creator.id !== loggedUserId) {
+      this.logger.error(
+        `User ${loggedUserId} tried to share a folder that does not belong to him/her`,
+      );
       throw new Error('You do not have permission to share this folder');
     }
 
     const usersList = await this.userService.findMultipleUsersByIds(users);
     if (usersList.length !== users.length) {
+      this.logger.error(
+        `While trying to share folder ${folderId} with users ${users} some users were not found.`,
+      );
       throw new Error('One or more users were not found');
     }
 
@@ -161,8 +176,11 @@ export class FolderService {
    * Find a folder by its path.
    */
 
-  async findFolderByPath(path: string): Promise<Folder> {
-    const folder = await this.folderRepository.findOne({ where: { path } });
+  async findFolderByPath(name: string, isPublic: boolean): Promise<Folder> {
+    const folderPath = isPublic ? `/public/${name}` : `/private/${name}`;
+    const folder = await this.folderRepository.findOne({
+      where: { path: folderPath },
+    });
 
     return folder;
   }
@@ -213,6 +231,9 @@ export class FolderService {
     }
 
     if (userId !== userFolder.user.id) {
+      this.logger.error(
+        `User ${userId} tried to update permission for a folder (${data.folderId}) that does not belong to him/her. `,
+      );
       throw new Error('You do not have permission to update this folder');
     }
 
@@ -244,6 +265,9 @@ export class FolderService {
     }
 
     if (folder.creator.id !== loggedUserId) {
+      this.logger.error(
+        `User ${loggedUserId} tried to update permission for a folder (${data.folderId}) that does not belong to him/her. `,
+      );
       throw new Error('You are not allowed to remove this folder permissions');
     }
 
@@ -339,9 +363,12 @@ export class FolderService {
     }
 
     if (
-      folder.creator.id !== userId &&
-      userPermission.permission !== folderPermissions.edit
+      (folder.creator.id !== userId && !userPermission) ||
+      (userPermission && userPermission.permission !== folderPermissions.edit)
     ) {
+      this.logger.error(
+        `User ${userId} tried to rename a folder (${folderId}) without access permission.`,
+      );
       throw new Error('You do not have permission to rename this folder');
     }
 
@@ -352,6 +379,7 @@ export class FolderService {
     folder.path = `/${folder.type}/${this.sanitizePath(name)}`;
     await this.renameFolderOnDisk(oldPathStorage, newPathStorage);
     await this.folderRepository.save(folder);
+    this.logger.log(`Folder ${folderId} renamed by user ${userId}`);
 
     return folder;
   }
@@ -368,6 +396,9 @@ export class FolderService {
     }
 
     if (folder.creator.id !== userId) {
+      this.logger.error(
+        `User ${userId} tried to delete a folder (${folderId}) without access permission.`,
+      );
       throw new Error('You do not have permission to remove this folder');
     }
 
@@ -379,6 +410,7 @@ export class FolderService {
     await this.deleteFolderFromDisk(pathStorage);
     await this.userFolderRepository.remove(userFolders);
     await this.folderRepository.remove(folder);
+    this.logger.log(`Folder ${folderId} removed by user ${userId}`);
 
     return {
       message: 'Folder removed successfully',
@@ -402,6 +434,9 @@ export class FolderService {
     }
 
     if (folder.creator.id !== userId) {
+      this.logger.error(
+        `User ${userId} tried to access a folder (${folderId}) without permission.`,
+      );
       throw new Error('You do not have permission to view this folder');
     }
 

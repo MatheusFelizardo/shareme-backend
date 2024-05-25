@@ -31,4 +31,13 @@ export class AuthService {
       access_token: this.jwtService.sign(payload),
     };
   }
+
+  async changePassword(userId: number, newPassword: string) {
+    const hashedPassword = bcrypt.hashSync(newPassword, 10);
+    const response = await this.usersService.updatePassword(
+      userId,
+      hashedPassword,
+    );
+    return response;
+  }
 }

@@ -21,4 +21,26 @@ export class AuthController {
   async login(@Request() req) {
     return this.authService.login(req.user);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('/change-password')
+  async changePassword(@Request() req) {
+    try {
+      const response = await this.authService.changePassword(
+        req.user.id,
+        req.body.newPassword,
+      );
+      return {
+        error: false,
+        data: response,
+      };
+    } catch (err) {
+      return {
+        error: true,
+        message:
+          err.message.replace(/^Error:\s*/, '') ||
+          'Error while changing password.',
+      };
+    }
+  }
 }

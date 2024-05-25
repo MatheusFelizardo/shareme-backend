@@ -11,10 +11,11 @@ import {
   folderPermissions,
 } from 'src/users/entities/user_folders.entity';
 import { FolderService } from 'src/folders/folder.service';
-import { info, log } from 'console';
 
 @Injectable()
 export class FileService {
+  private readonly logger = new Logger(FileService.name);
+
   constructor(
     @InjectRepository(File)
     private fileRepository: Repository<File>,
@@ -47,26 +48,34 @@ export class FileService {
       withDeleted: true,
     });
 
-    if (files.length === 0) {
-      return [];
-    }
-
-    const isTheOwner = files[0].folder.creator.id === loggedUserId;
     const hasPermission = await this.userFolderRepository.findOne({
       where: { folder: { id: folderId }, user: { id: loggedUserId } },
       relations: ['user'],
       withDeleted: true,
     });
 
+    const folder = await this.folderRepository.findOne({
+      where: { id: folderId },
+      relations: ['creator'],
+    });
+
+    const isTheOwner = folder.creator.id === loggedUserId;
+
     if (
-      !isTheOwner &&
-      !hasPermission &&
-      files[0].folder.type === FolderType.private
+      (!isTheOwner && !hasPermission) ||
+      (!hasPermission &&
+        !isTheOwner &&
+        !hasPermission &&
+        folder.type === FolderType.private)
     ) {
-      Logger.error(
-        `INVALID REQUEST: ${loggedUserEmail} is trying to access the folder ${folderId} which belongs to ${files[0].folder.creator.email}`,
+      this.logger.error(
+        `INVALID REQUEST: ${loggedUserEmail} is trying to access the folder ${folderId} which belongs to ${folder.creator.email} via private path`,
       );
       throw new Error('You do not have permission to view this folder');
+    }
+
+    if (files.length === 0) {
+      return [];
     }
 
     return files.map((file) => {
@@ -84,18 +93,23 @@ export class FileService {
       withDeleted: true,
     });
 
-    if (files.length === 0) {
-      return [];
-    }
+    const folder = await this.folderRepository.findOne({
+      where: { id: folderId },
+      relations: ['creator'],
+    });
 
-    if (files[0].folder.type === FolderType.private) {
-      Logger.error(
-        `INVALID REQUEST: ${loggedUserEmail} is trying to access the folder ${folderId} which is private and belongs to ${files[0].folder.creator.email}`,
+    if (folder.type === FolderType.private) {
+      this.logger.error(
+        `INVALID REQUEST: ${loggedUserEmail} is trying to access the folder ${folderId} which is private and belongs to ${folder.creator.email}`,
       );
 
       throw new Error(
         'This folder is private. Please contact the owner to get access.',
       );
+    }
+
+    if (files.length === 0) {
+      return [];
     }
 
     return files.map((file) => {
@@ -129,6 +143,9 @@ export class FileService {
       (!hasPermission && folder.creator.id !== loggedUserId) ||
       (hasPermission && hasPermission?.permission === folderPermissions.read)
     ) {
+      this.logger.error(
+        `INVALID REQUEST: User id ${loggedUserId} is trying to upload a file in folder ${folderId} without access`,
+      );
       throw new Error(
         'You do not have permission to upload files to this folder',
       );
@@ -167,6 +184,9 @@ export class FileService {
         creator: creator,
       });
       await this.fileRepository.save(newFile);
+      this.logger.log(
+        `File ${file.originalname} uploaded successfully by ${creator.email} in folder ${folderId}`,
+      );
 
       const fileToDto = new CreateFileDto(newFile, folder, creator);
 
@@ -196,6 +216,9 @@ export class FileService {
     );
 
     if (!hasPermission) {
+      this.logger.error(
+        `INVALID REQUEST: User id ${loggedUserId} is trying to delete a file without access in folder ${file.folder.id}`,
+      );
       throw new Error('You do not have permission to delete this file');
     }
 
@@ -223,6 +246,9 @@ export class FileService {
     );
 
     if (!hasPermission) {
+      this.logger.error(
+        `INVALID REQUEST: User id ${loggedUserId} is trying to rename a file without access in folder ${file.folder.id}`,
+      );
       throw new Error('You do not have permission to rename this file');
     }
 
@@ -264,6 +290,34 @@ export class FileService {
     };
   }
 
+  async findOne(id: number, loggedUserId: number) {
+    const file = await this.fileRepository.findOne({
+      where: { id },
+      relations: ['folder', 'folder.creator'],
+    });
+
+    if (!file) {
+      throw new Error('File not found');
+    }
+
+    const hasPermission = await this.userFolderRepository.findOne({
+      where: { folder: { id: file.folder.id }, user: { id: loggedUserId } },
+      relations: ['user'],
+    });
+
+    if (
+      !hasPermission &&
+      file.folder.type === FolderType.private &&
+      file.folder.creator.id !== loggedUserId
+    ) {
+      this.logger.error(
+        `INVALID REQUEST: User id ${loggedUserId} is trying to access a file without access in folder ${file.folder.id}`,
+      );
+      throw new Error('You do not have permission to access this file');
+    }
+    return file;
+  }
+
   private async moveFile(
     file: Express.Multer.File,
     pathTosave: string,
@@ -297,7 +351,7 @@ export class FileService {
     if (
       (hasPermission && file.creator.id === loggedUserId) ||
       file.folder.creator.id === loggedUserId ||
-      hasPermission.permission === folderPermissions.edit
+      (hasPermission && hasPermission.permission === folderPermissions.edit)
     ) {
       return true;
     }

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, roles } from './entities/user.entity';
@@ -8,6 +8,8 @@ import { UpdateUserDto } from './dtos/update-user.dto';
 
 @Injectable()
 export class UserService {
+  private readonly logger = new Logger(UserService.name);
+
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
@@ -30,10 +32,12 @@ export class UserService {
       });
 
       if (!user) {
+        this.logger.error(`User ${id} not found.`);
         throw new Error('User not found.');
       }
       return new ResponseUserDto(user);
     } catch (error) {
+      this.logger.error(`ERROR find user by id ${id}: ${error} `);
       throw new Error(error);
     }
   }
@@ -49,6 +53,7 @@ export class UserService {
       }
       return new ResponseUserDto(user);
     } catch (error) {
+      this.logger.error(`ERROR find user by email ${email}: ${error} `);
       throw new Error(error);
     }
   }
@@ -57,10 +62,9 @@ export class UserService {
     createUserDto: CreateUserDto,
     user: User,
   ): Promise<ResponseUserDto> {
-    if (user.role !== roles.admin) {
-      throw new Error('Resource only allowed for system admins.');
-    }
-
+    // if (user.role !== roles.admin) {
+    //   throw new Error('Resource only allowed for system admins.');
+    // }
     try {
       createUserDto.name = createUserDto.name.trim();
       createUserDto.lastName = createUserDto.lastName.trim();
@@ -81,11 +85,14 @@ export class UserService {
 
       const user = this.userRepository.create(createUserDto);
       await this.userRepository.save(user);
-
+      this.logger.log(
+        `New user created with email: ${user.email} and id ${user.id}`,
+      );
       const userToDto = new ResponseUserDto(user);
 
       return userToDto;
     } catch (error) {
+      this.logger.error(`ERROR creating user: ${error} `);
       throw new Error(error);
     }
   }
@@ -120,6 +127,7 @@ export class UserService {
   async updateUserRole(
     id: string,
     updateUserDto: UpdateUserDto,
+    loggedUserEmail: string,
   ): Promise<ResponseUserDto> {
     try {
       const user = await this.userRepository.findOne({
@@ -141,6 +149,9 @@ export class UserService {
         ...user,
         ...updatableFields,
       });
+      this.logger.log(
+        `Role updated for user ${updatedUser.email} to ${updatedUser.role} requested by ${loggedUserEmail}`,
+      );
       const responseUserDto = new ResponseUserDto(updatedUser);
       return responseUserDto;
     } catch (error) {
@@ -148,7 +159,7 @@ export class UserService {
     }
   }
 
-  async deleteUser(id: number): Promise<string> {
+  async deleteUser(id: number, loggedUserEmail: string): Promise<string> {
     try {
       const user = await this.userRepository.findOne({
         where: { id: id },
@@ -159,6 +170,7 @@ export class UserService {
       }
 
       await this.userRepository.softDelete({ id });
+      this.logger.log(`User ${id} deleted by ${loggedUserEmail}`);
       return `User ${id} deleted successfuly.`;
     } catch (error) {
       throw new Error(error);
@@ -201,5 +213,19 @@ export class UserService {
 
     const usersToDto = usersArray.map((user) => new ResponseUserDto(user));
     return usersToDto;
+  }
+
+  async updatePassword(
+    userId: number,
+    hashedPassword: string,
+  ): Promise<ResponseUserDto> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    user.password = hashedPassword;
+    await this.userRepository.save(user);
+    return new ResponseUserDto(user);
   }
 }

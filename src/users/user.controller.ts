@@ -18,6 +18,7 @@ import { User, roles } from './entities/user.entity';
 import { ResponseUserDto } from './dtos/response-user.dto';
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { LocalAuthGuard } from 'src/auth/guards/local-auth.guard';
 
 interface HttpRequestError {
   error: boolean;
@@ -80,7 +81,6 @@ export class UserController {
     }
   }
 
-  @UseGuards(JwtAuthGuard)
   @Post()
   async create(
     @Body() createUserDto: CreateUserDto,
@@ -141,13 +141,18 @@ export class UserController {
     @Request() req,
   ): Promise<HttpResquestSuccess | HttpRequestError> {
     try {
-      const user = await this.userService.updateUserRole(id, updateUserDto);
       if (req.user.role !== roles['admin']) {
         return {
           error: true,
           message: 'Resource only allowed for system admins.',
         };
       }
+
+      const user = await this.userService.updateUserRole(
+        id,
+        updateUserDto,
+        req.user.email,
+      );
 
       return {
         error: false,
@@ -177,7 +182,7 @@ export class UserController {
     }
 
     try {
-      const response = await this.userService.deleteUser(id);
+      const response = await this.userService.deleteUser(id, req.user.email);
       return {
         error: false,
         data: response,
