@@ -69,7 +69,7 @@ export class FileService {
         folder.type === FolderType.private)
     ) {
       this.logger.error(
-        `INVALID REQUEST: ${loggedUserEmail} is trying to access the folder ${folderId} which belongs to ${folder.creator.email} via private path`,
+        `INVALID REQUEST: ${loggedUserEmail} is trying to access the folder ${folderId} which belongs to ${folder?.creator?.email} via private path`,
       );
       throw new Error('You do not have permission to view this folder');
     }
