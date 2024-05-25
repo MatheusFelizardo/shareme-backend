@@ -17,17 +17,25 @@ const entitiesPath = join(__dirname, '**', '*.entity.{ts,js}');
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    TypeOrmModule.forRoot({
-      type: 'mysql',
-      host: process.env.DB_HOST,
-      port: +process.env.DB_PORT,
-      username: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME,
-      ssl: isDev ? false : true,
-      entities: [entitiesPath],
-      synchronize: isDev,
-    }),
+    TypeOrmModule.forRoot(
+      isDev
+        ? {
+            type: 'sqlite',
+            database: './src/_config/database.db',
+            entities: [entitiesPath],
+            synchronize: true,
+          }
+        : {
+            type: 'mysql',
+            host: process.env.DB_HOST,
+            port: +process.env.DB_PORT,
+            username: process.env.DB_USER,
+            password: process.env.DB_PASS,
+            database: process.env.DB_NAME,
+            entities: [entitiesPath],
+            synchronize: false,
+          },
+    ),
     ThrottlerModule.forRoot([
       {
         ttl: isDev ? 0 : 60000,
