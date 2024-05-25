@@ -24,6 +24,7 @@ const entitiesPath = join(__dirname, '**', '*.entity.{ts,js}');
       username: process.env.DB_USER,
       password: process.env.DB_PASS,
       database: process.env.DB_NAME,
+      ssl: isDev ? false : true,
       entities: [entitiesPath],
       synchronize: isDev,
     }),
