@@ -64,7 +64,7 @@ export class FolderService {
 
       const folder = this.folderRepository.create(data);
       await this.folderRepository.save(folder);
-      this.logger.log(`New folder id ${folder.id} created by user ${userId}`);
+      this.logger.log(`New folder id ${folder?.id} created by user ${userId}`);
 
       return new ResponseFolderDto(folder);
     } catch (error) {

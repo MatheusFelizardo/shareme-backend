@@ -86,7 +86,7 @@ export class UserService {
       const user = this.userRepository.create(createUserDto);
       await this.userRepository.save(user);
       this.logger.log(
-        `New user created with email: ${user.email} and id ${user.id}`,
+        `New user created with email: ${user?.email} and id ${user?.id}`,
       );
       const userToDto = new ResponseUserDto(user);
 
@@ -150,7 +150,7 @@ export class UserService {
         ...updatableFields,
       });
       this.logger.log(
-        `Role updated for user ${updatedUser.email} to ${updatedUser.role} requested by ${loggedUserEmail}`,
+        `Role updated for user ${updatedUser?.email} to ${updatedUser?.role} requested by ${loggedUserEmail}`,
       );
       const responseUserDto = new ResponseUserDto(updatedUser);
       return responseUserDto;
